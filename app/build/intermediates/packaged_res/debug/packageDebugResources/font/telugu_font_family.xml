@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  This declares a font family that lets Android's text layout pick the right
+  glyphs for Telugu and Latin characters automatically.
+
+  You must download these two files from Google Fonts and place them here
+  before building:
+    - noto_sans_telugu_regular.ttf  (https://fonts.google.com/noto/specimen/Noto+Sans+Telugu)
+    - noto_sans_regular.ttf         (https://fonts.google.com/noto/specimen/Noto+Sans)
+
+  Rename the downloaded files to match the names below (lowercase, underscores,
+  no spaces — Android resource names require this).
+-->
+<font-family xmlns:android="http://schemas.android.com/apk/res/android">
+    <font
+        android:font="@font/noto_sans_telugu_regular"
+        android:fontStyle="normal"
+        android:fontWeight="400" />
+</font-family>

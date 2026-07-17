@@ -1,0 +1,90 @@
+[
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/mipmap-mdpi_ic_launcher_foreground.webp.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/mipmap-mdpi/ic_launcher_foreground.webp"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/font_telugu_font_family.xml.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/font/telugu_font_family.xml"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/mipmap-mdpi_ic_launcher.webp.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/mipmap-mdpi/ic_launcher.webp"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/mipmap-hdpi_ic_launcher.webp.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/mipmap-hdpi/ic_launcher.webp"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/mipmap-xhdpi_ic_launcher_foreground.webp.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/mipmap-xhdpi/ic_launcher_foreground.webp"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/mipmap-mdpi_ic_launcher_round.webp.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/mipmap-mdpi/ic_launcher_round.webp"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/mipmap-hdpi_ic_launcher_round.webp.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/mipmap-hdpi/ic_launcher_round.webp"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/mipmap-hdpi_ic_launcher_foreground.webp.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/mipmap-hdpi/ic_launcher_foreground.webp"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/drawable_ic_launcher_foreground.xml.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/drawable/ic_launcher_foreground.xml"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/mipmap-anydpi-v26/ic_launcher.xml"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/font_noto_sans_telugu_regular.ttf.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/font/noto_sans_telugu_regular.ttf"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/mipmap-xxhdpi_ic_launcher.webp.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/mipmap-xxhdpi/ic_launcher.webp"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/xml_file_paths.xml.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/xml/file_paths.xml"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/mipmap-xxhdpi_ic_launcher_round.webp.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/mipmap-xxhdpi/ic_launcher_round.webp"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/mipmap-xxxhdpi_ic_launcher.webp.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/mipmap-xxxhdpi/ic_launcher.webp"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/mipmap-xhdpi_ic_launcher.webp.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/mipmap-xhdpi/ic_launcher.webp"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/mipmap-anydpi-v26/ic_launcher_round.xml"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/mipmap-xxxhdpi_ic_launcher_round.webp.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/mipmap-xxxhdpi/ic_launcher_round.webp"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/mipmap-xhdpi_ic_launcher_round.webp.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/mipmap-xhdpi/ic_launcher_round.webp"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/drawable_ic_launcher_background.xml.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/drawable/ic_launcher_background.xml"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/mipmap-xxxhdpi_ic_launcher_foreground.webp.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/mipmap-xxxhdpi/ic_launcher_foreground.webp"
+    },
+    {
+        "merged": "com.example.teluguphotoquote.app-debug-47:/mipmap-xxhdpi_ic_launcher_foreground.webp.flat",
+        "source": "com.example.teluguphotoquote.app-main-49:/mipmap-xxhdpi/ic_launcher_foreground.webp"
+    }
+]
