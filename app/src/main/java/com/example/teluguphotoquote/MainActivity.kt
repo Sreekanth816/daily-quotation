@@ -7,7 +7,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
-import android.speech.RecognizerIntent
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -15,25 +14,30 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material.icons.filled.Photo
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
-import coil.compose.AsyncImage
+import androidx.core.graphics.drawable.toBitmap
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -46,46 +50,64 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    PhotoQuoteScreen()
+                    AppRoot()
                 }
             }
         }
     }
 }
 
+private enum class Screen { ONBOARDING, MAIN, EDIT_PROFILE }
+
+/**
+ * Decides whether to show the one-time onboarding form (upload picture +
+ * name), the main quote-creation screen, or the profile-edit form, based on
+ * whether a profile has already been saved in [UserProfileStore] and on
+ * in-memory navigation state.
+ */
 @Composable
-fun PhotoQuoteScreen() {
+fun AppRoot() {
+    val context = LocalContext.current
+    var profile by remember { mutableStateOf(UserProfileStore.getProfile(context)) }
+    var screen by remember { mutableStateOf(if (profile == null) Screen.ONBOARDING else Screen.MAIN) }
+
+    when (screen) {
+        Screen.ONBOARDING -> ProfileFormScreen(
+            title = "Welcome!",
+            onSave = { name, imagePath ->
+                UserProfileStore.saveProfile(context, name, imagePath)
+                profile = UserProfile(name, imagePath)
+                screen = Screen.MAIN
+            }
+        )
+        Screen.EDIT_PROFILE -> ProfileFormScreen(
+            title = "Edit profile",
+            initialName = profile?.name.orEmpty(),
+            initialImagePath = profile?.profileImagePath,
+            showBackButton = true,
+            onBack = { screen = Screen.MAIN },
+            onSave = { name, imagePath ->
+                UserProfileStore.saveProfile(context, name, imagePath)
+                profile = UserProfile(name, imagePath)
+                screen = Screen.MAIN
+            }
+        )
+        Screen.MAIN -> PhotoQuoteScreen(
+            profile = profile!!,
+            onEditProfile = { screen = Screen.EDIT_PROFILE }
+        )
+    }
+}
+
+@Composable
+fun PhotoQuoteScreen(profile: UserProfile, onEditProfile: () -> Unit) {
     val context = LocalContext.current
 
     var quoteText by remember { mutableStateOf("") }
-    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
-    var sourceBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var backgroundResId by remember { mutableStateOf(ImagePool.randomResId()) }
     var renderedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var speechLanguage by remember { mutableStateOf(SpeechLanguage.TELUGU) }
-    var position by remember { mutableStateOf(TextPosition.BOTTOM) }
-    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
-
-    // --- Photo Picker (gallery) ---
-    val pickImageLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri ->
-        if (uri != null) {
-            selectedImageUri = uri
-            sourceBitmap = loadBitmapFromUri(context, uri)
-            renderedBitmap = null
-        }
-    }
-
-    // --- Camera capture ---
-    val takePictureLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicture()
-    ) { success ->
-        if (success && pendingCameraUri != null) {
-            selectedImageUri = pendingCameraUri
-            sourceBitmap = loadBitmapFromUri(context, pendingCameraUri!!)
-            renderedBitmap = null
-        }
-    }
+    var textPosition by remember { mutableStateOf(TextPosition.TOP) }
 
     // --- Speech-to-text ---
     val speechLauncher = rememberLauncherForActivityResult(
@@ -103,11 +125,42 @@ fun PhotoQuoteScreen() {
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        Text(
-            text = "Telugu Photo Quote",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
-        )
+        // Header row: title on the left, small circular profile avatar on the right.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "JS Today Quote.",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { onEditProfile() }
+            ) {
+                Text(
+                    text = profile.name,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+                val avatarBitmap = remember(profile.profileImagePath) {
+                    android.graphics.BitmapFactory.decodeFile(profile.profileImagePath)
+                }
+                if (avatarBitmap != null) {
+                    Image(
+                        bitmap = avatarBitmap.asImageBitmap(),
+                        contentDescription = "Your profile picture (tap to edit)",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .border(1.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                    )
+                }
+            }
+        }
         Spacer(modifier = Modifier.height(16.dp))
 
         // Text input
@@ -142,81 +195,75 @@ fun PhotoQuoteScreen() {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Photo pick / camera buttons
-        Row {
-            Button(onClick = {
-                pickImageLauncher.launch(
-                    androidx.activity.result.PickVisualMediaRequest(
-                        ActivityResultContracts.PickVisualMedia.ImageOnly
-                    )
-                )
-            }) {
-                Icon(Icons.Filled.Photo, contentDescription = null)
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Gallery")
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Button(onClick = {
-                val uri = createCameraOutputUri(context)
-                pendingCameraUri = uri
-                takePictureLauncher.launch(uri)
-            }) {
-                Icon(Icons.Filled.PhotoCamera, contentDescription = null)
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Camera")
-            }
+        // Background photo preview, randomly chosen from the 10 bundled images.
+        Text("Background image", style = MaterialTheme.typography.labelLarge)
+        Spacer(modifier = Modifier.height(8.dp))
+        Box {
+            Image(
+                painter = painterResource(id = backgroundResId),
+                contentDescription = "Background",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(220.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedButton(onClick = {
+            backgroundResId = ImagePool.randomResId(exclude = backgroundResId)
+            renderedBitmap = null
+        }) {
+            Icon(Icons.Filled.Shuffle, contentDescription = null)
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Shuffle image")
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
         // Text position selector
-        if (sourceBitmap != null) {
-            Text("Text position", style = MaterialTheme.typography.labelLarge)
-            Row {
-                TextPosition.values().forEach { pos ->
-                    FilterChip(
-                        selected = position == pos,
-                        onClick = { position = pos },
-                        label = { Text(pos.name) },
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                }
+        Text("Text position", style = MaterialTheme.typography.labelLarge)
+        Row {
+            TextPosition.values().forEach { pos ->
+                FilterChip(
+                    selected = textPosition == pos,
+                    onClick = { textPosition = pos },
+                    label = { Text(pos.name) },
+                    modifier = Modifier.padding(end = 8.dp)
+                )
             }
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Button(
-                onClick = {
-                    val bmp = sourceBitmap ?: return@Button
-                    renderedBitmap = renderQuoteOnPhoto(
-                        context = context,
-                        sourceBitmap = bmp,
-                        quoteText = quoteText,
-                        style = QuoteStyle(position = position)
-                    )
-                },
-                enabled = quoteText.isNotBlank()
-            ) {
-                Text("Generate Image")
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
         }
 
-        // Preview
-        val previewBitmap = renderedBitmap ?: sourceBitmap
-        if (previewBitmap != null) {
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            onClick = {
+                val bmp = drawableToBitmap(context, backgroundResId)
+                renderedBitmap = renderQuoteOnPhoto(
+                    context = context,
+                    sourceBitmap = bmp,
+                    quoteText = quoteText,
+                    style = QuoteStyle(position = textPosition),
+                    profile = profile
+                )
+            },
+            enabled = quoteText.isNotBlank()
+        ) {
+            Text("Generate Image")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Preview of the final rendered quote image
+        if (renderedBitmap != null) {
             Image(
-                bitmap = previewBitmap.asImageBitmap(),
+                bitmap = renderedBitmap!!.asImageBitmap(),
                 contentDescription = "Preview",
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surfaceVariant)
             )
             Spacer(modifier = Modifier.height(16.dp))
-        }
 
-        // Save / Share
-        if (renderedBitmap != null) {
             Row {
                 Button(onClick = {
                     val uri = saveBitmapToGallery(context, renderedBitmap!!)
@@ -264,27 +311,11 @@ fun SegmentedLanguageToggle(
 
 // --- Helper functions ---
 
-private fun loadBitmapFromUri(context: android.content.Context, uri: Uri): Bitmap? {
-    return try {
-        val source = android.graphics.ImageDecoder.createSource(context.contentResolver, uri)
-        android.graphics.ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
-            decoder.isMutableRequired = true
-        }
-    } catch (e: Exception) {
-        null
-    }
-}
-
-private fun createCameraOutputUri(context: android.content.Context): Uri {
-    val imagesDir = File(context.getExternalFilesDir("images"), "")
-    if (!imagesDir.exists()) imagesDir.mkdirs()
-    val fileName = "camera_${System.currentTimeMillis()}.jpg"
-    val file = File(imagesDir, fileName)
-    return FileProvider.getUriForFile(
-        context,
-        "${context.packageName}.fileprovider",
-        file
-    )
+/** Decodes a bundled drawable resource into a mutable ARGB_8888 bitmap ready for canvas drawing. */
+private fun drawableToBitmap(context: android.content.Context, resId: Int): Bitmap {
+    val drawable = androidx.core.content.ContextCompat.getDrawable(context, resId)!!
+    val bitmap = drawable.toBitmap()
+    return bitmap.copy(Bitmap.Config.ARGB_8888, true)
 }
 
 private fun saveBitmapToGallery(context: android.content.Context, bitmap: Bitmap): Uri? {

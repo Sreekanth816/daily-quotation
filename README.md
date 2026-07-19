@@ -1,4 +1,4 @@
-# Telugu Photo Quote
+# JS Today's Quote
 
 An Android app (Kotlin + Jetpack Compose) that lets a user type or speak
 Telugu (or English) text and overlay it onto a photo, then save/share the
