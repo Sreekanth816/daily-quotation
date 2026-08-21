@@ -67,6 +67,7 @@ dependencies {
 
     implementation("androidx.activity:activity-ktx:1.9.1")
     implementation("androidx.core:core:1.13.1")
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 
     // Image loading for previews
     implementation("io.coil-kt:coil-compose:2.6.0")
