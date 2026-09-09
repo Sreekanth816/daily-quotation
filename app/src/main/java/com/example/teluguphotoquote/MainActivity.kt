@@ -16,6 +16,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -29,12 +30,21 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.core.graphics.drawable.toBitmap
@@ -58,6 +68,13 @@ class MainActivity : ComponentActivity() {
 }
 
 private enum class Screen { ONBOARDING, MAIN, EDIT_PROFILE }
+
+/** Quick-jump presets for the draggable text anchor (center-point fractions of the image). */
+private enum class PositionPreset(val label: String, val fx: Float, val fy: Float) {
+    TOP("Top", 0.5f, 0.16f),
+    CENTER("Center", 0.5f, 0.5f),
+    BOTTOM("Bottom", 0.5f, 0.84f)
+}
 
 /**
  * Decides whether to show the one-time onboarding form (upload picture +
@@ -107,7 +124,10 @@ fun PhotoQuoteScreen(profile: UserProfile, onEditProfile: () -> Unit) {
     var backgroundResId by remember { mutableStateOf(ImagePool.randomResId()) }
     var renderedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var speechLanguage by remember { mutableStateOf(SpeechLanguage.TELUGU) }
-    var textPosition by remember { mutableStateOf(TextPosition.TOP) }
+
+    // Center-point of the quote text as a fraction (0f..1f) of the actual
+    // image dimensions — draggable in the preview, baked in on Generate.
+    var textAnchor by remember { mutableStateOf(Offset(PositionPreset.TOP.fx, PositionPreset.TOP.fy)) }
 
     // --- Speech-to-text ---
     val speechLauncher = rememberLauncherForActivityResult(
@@ -132,7 +152,7 @@ fun PhotoQuoteScreen(profile: UserProfile, onEditProfile: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "JS Today Quote.",
+                text = "JS Today Quote",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold
             )
@@ -195,19 +215,17 @@ fun PhotoQuoteScreen(profile: UserProfile, onEditProfile: () -> Unit) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Background photo preview, randomly chosen from the 10 bundled images.
-        Text("Background image", style = MaterialTheme.typography.labelLarge)
+        // Background photo preview with the draggable quote text overlaid.
+        Text("Drag & Drop quotation position", style = MaterialTheme.typography.labelLarge)
         Spacer(modifier = Modifier.height(8.dp))
-        Box {
-            Image(
-                painter = painterResource(id = backgroundResId),
-                contentDescription = "Background",
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(220.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-            )
-        }
+
+        DraggableQuotePreview(
+            backgroundResId = backgroundResId,
+            quoteText = quoteText,
+            anchor = textAnchor,
+            onAnchorChange = { textAnchor = it }
+        )
+
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedButton(onClick = {
             backgroundResId = ImagePool.randomResId(exclude = backgroundResId)
@@ -220,14 +238,15 @@ fun PhotoQuoteScreen(profile: UserProfile, onEditProfile: () -> Unit) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Text position selector
-        Text("Text position", style = MaterialTheme.typography.labelLarge)
+        // Quick-jump position presets — dragging still works after tapping one.
+        Text("Jump to position", style = MaterialTheme.typography.labelLarge)
         Row {
-            TextPosition.values().forEach { pos ->
+            PositionPreset.values().forEach { preset ->
+                val isSelected = textAnchor.x == preset.fx && textAnchor.y == preset.fy
                 FilterChip(
-                    selected = textPosition == pos,
-                    onClick = { textPosition = pos },
-                    label = { Text(pos.name) },
+                    selected = isSelected,
+                    onClick = { textAnchor = Offset(preset.fx, preset.fy) },
+                    label = { Text(preset.label) },
                     modifier = Modifier.padding(end = 8.dp)
                 )
             }
@@ -242,8 +261,9 @@ fun PhotoQuoteScreen(profile: UserProfile, onEditProfile: () -> Unit) {
                     context = context,
                     sourceBitmap = bmp,
                     quoteText = quoteText,
-                    style = QuoteStyle(position = textPosition),
-                    profile = profile
+                    profile = profile,
+                    anchorFractionX = textAnchor.x,
+                    anchorFractionY = textAnchor.y
                 )
             },
             enabled = quoteText.isNotBlank()
@@ -287,6 +307,103 @@ fun PhotoQuoteScreen(profile: UserProfile, onEditProfile: () -> Unit) {
                 }) {
                     Text("Share")
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Shows the chosen background image (scaled to fit, so what's visible maps
+ * 1:1 onto the full-resolution photo) with the quote text overlaid as a
+ * draggable label. [anchor] is the text's center point as a fraction
+ * (0f..1f) of the *image itself* — not of this composable's box — so the
+ * same fraction can be handed straight to [renderQuoteOnPhoto].
+ */
+@Composable
+private fun DraggableQuotePreview(
+    backgroundResId: Int,
+    quoteText: String,
+    anchor: Offset,
+    onAnchorChange: (Offset) -> Unit
+) {
+    val painter = painterResource(id = backgroundResId)
+    var boxSize by remember { mutableStateOf(IntSize.Zero) }
+    var textSize by remember { mutableStateOf(IntSize.Zero) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(260.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .onGloballyPositioned { boxSize = it.size }
+    ) {
+        Image(
+            painter = painter,
+            contentDescription = "Background",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        if (quoteText.isNotBlank() && boxSize.width > 0 && boxSize.height > 0) {
+            val intrinsic = painter.intrinsicSize
+            val boxW = boxSize.width.toFloat()
+            val boxH = boxSize.height.toFloat()
+            val scale = if (intrinsic.width > 0f && intrinsic.height > 0f) {
+                minOf(boxW / intrinsic.width, boxH / intrinsic.height)
+            } else 1f
+            val drawnW = if (intrinsic.width > 0f) intrinsic.width * scale else boxW
+            val drawnH = if (intrinsic.height > 0f) intrinsic.height * scale else boxH
+            val imageOffsetX = (boxW - drawnW) / 2f
+            val imageOffsetY = (boxH - drawnH) / 2f
+
+            // Read the latest sizes inside the gesture without restarting it.
+            val drawnWState = rememberUpdatedState(drawnW)
+            val drawnHState = rememberUpdatedState(drawnH)
+            val anchorState = rememberUpdatedState(anchor)
+
+            val density = LocalDensity.current
+            val maxTextWidthDp = with(density) { (drawnW * 0.85f).toDp() }
+
+            Box(
+                // Extra padding = bigger, more forgiving drag handle around the text.
+                modifier = Modifier
+                    .widthIn(max = maxTextWidthDp + 32.dp)
+                    .onGloballyPositioned { textSize = it.size }
+                    .offset {
+                        val centerX = imageOffsetX + anchor.x * drawnW
+                        val centerY = imageOffsetY + anchor.y * drawnH
+                        IntOffset(
+                            (centerX - textSize.width / 2f).toInt(),
+                            (centerY - textSize.height / 2f).toInt()
+                        )
+                    }
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = { },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                val w = drawnWState.value
+                                val h = drawnHState.value
+                                if (w > 0f && h > 0f) {
+                                    val current = anchorState.value
+                                    val newX = (current.x + dragAmount.x / w).coerceIn(0f, 1f)
+                                    val newY = (current.y + dragAmount.y / h).coerceIn(0f, 1f)
+                                    onAnchorChange(Offset(newX, newY))
+                                }
+                            }
+                        )
+                    }
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = quoteText,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        shadow = Shadow(color = Color.Black, blurRadius = 10f, offset = Offset(0f, 2f))
+                    )
+                )
             }
         }
     }

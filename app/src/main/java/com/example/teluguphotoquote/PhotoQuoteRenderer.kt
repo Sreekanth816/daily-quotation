@@ -18,6 +18,11 @@ enum class TextPosition { TOP, CENTER, BOTTOM }
 
 /**
  * All the user-adjustable styling options for the caption.
+ *
+ * These sizes are "reference" values as they'd look on a roughly 1080px-wide
+ * photo. [imageScaleFactor] then scales them up (never down) for larger
+ * generated images so text/avatar stay visually proportionate regardless of
+ * the source photo's resolution.
  */
 data class QuoteStyle(
     val textColor: Int = Color.WHITE,
@@ -32,17 +37,33 @@ data class QuoteStyle(
 /**
  * Styling for the small "watermark" showing who created the quote: a
  * circular profile picture plus the user's name, anchored to a corner.
+ * Base sizes doubled from the original design; also subject to
+ * [imageScaleFactor] scaling for large photos.
  */
 data class ProfileBadgeStyle(
-    val avatarSizeDp: Float = 44f,
-    val marginDp: Float = 16f,
+    val avatarSizeDp: Float = 65f,//avatar size in generated image
+    val marginDp: Float = 20f,
     val avatarBorderColor: Int = Color.WHITE,
-    val avatarBorderWidthDp: Float = 2f,
+    val avatarBorderWidthDp: Float = 3f,
     val nameTextColor: Int = Color.WHITE,
-    val nameTextSizeSp: Float = 14f,
+    val nameTextSizeSp: Float = 24f,//name in generated image
     val backgroundColor: Int = Color.BLACK,
     val backgroundAlpha: Int = 140
 )
+
+/** The short-side pixel dimension used as the "1x scale" reference for [imageScaleFactor]. */
+private const val REFERENCE_MIN_DIMENSION_PX = 1080f
+
+/**
+ * Returns a scale multiplier based on how much bigger the actual generated
+ * image is than a typical/reference photo. Never returns less than 1f, so
+ * normal-sized images keep their original look — only large images get
+ * boosted sizing so text and the avatar badge stay legible.
+ */
+private fun imageScaleFactor(bitmap: Bitmap): Float {
+    val shortSide = minOf(bitmap.width, bitmap.height).toFloat()
+    return (shortSide / REFERENCE_MIN_DIMENSION_PX).coerceAtLeast(1f)
+}
 
 /**
  * Builds a Typeface that renders Telugu glyphs using Noto Sans Telugu and
@@ -58,19 +79,6 @@ object QuoteTypefaceFactory {
         val teluguTypeface = androidx.core.content.res.ResourcesCompat.getFont(
             context, R.font.telugu_font_family
         ) ?: Typeface.DEFAULT
-
-        // Android's Minikin text stack already performs per-script font fallback
-        // automatically: when a run of Latin characters can't be rendered by
-        // Noto Sans Telugu, the system substitutes the closest matching system
-        // Latin font for that run. This works well out of the box on API 24+,
-        // so no CustomFallbackBuilder is required for the common case.
-        //
-        // For pixel-perfect control over which exact Latin font is used (e.g. to
-        // match Noto Sans Telugu's weight/x-height precisely), you can build an
-        // explicit chain on API 29+ with Typeface.CustomFallbackBuilder using
-        // android.graphics.fonts.FontFamily + Font.Builder pointed at a bundled
-        // noto_sans_regular.ttf asset. Left as a straightforward enhancement —
-        // the default fallback above is production-safe.
         return teluguTypeface
     }
 }
@@ -78,6 +86,15 @@ object QuoteTypefaceFactory {
 /**
  * Renders the given caption text onto a copy of [sourceBitmap] and returns
  * the combined image, ready to save or share.
+ *
+ * If [anchorFractionX]/[anchorFractionY] are provided (both in 0f..1f, as
+ * dragged by the user in the preview), the text block is centered on that
+ * point of the image, clamped so it stays fully on-canvas. Otherwise it
+ * falls back to the fixed [QuoteStyle.position] (TOP/CENTER/BOTTOM).
+ *
+ * Text and padding sizes scale up for large source images via
+ * [imageScaleFactor] so the caption stays clearly readable regardless of
+ * the background photo's resolution.
  *
  * Uses StaticLayout (not raw Canvas.drawText) so long captions wrap correctly
  * and Telugu conjuncts (ottu) shape properly via Android's Minikin/HarfBuzz
@@ -89,7 +106,9 @@ fun renderQuoteOnPhoto(
     quoteText: String,
     style: QuoteStyle = QuoteStyle(),
     profile: UserProfile? = null,
-    profileBadgeStyle: ProfileBadgeStyle = ProfileBadgeStyle()
+    profileBadgeStyle: ProfileBadgeStyle = ProfileBadgeStyle(),
+    anchorFractionX: Float? = null,
+    anchorFractionY: Float? = null
 ): Bitmap {
     val density = context.resources.displayMetrics.density
     val scaledDensity = context.resources.displayMetrics.scaledDensity
@@ -97,8 +116,10 @@ fun renderQuoteOnPhoto(
     val output = sourceBitmap.copy(Bitmap.Config.ARGB_8888, true)
     val canvas = Canvas(output)
 
-    val horizontalPaddingPx = style.horizontalPaddingDp * density
-    val verticalPaddingPx = style.verticalPaddingDp * density
+    val scaleFactor = imageScaleFactor(output)
+
+    val horizontalPaddingPx = style.horizontalPaddingDp * density * scaleFactor
+    val verticalPaddingPx = style.verticalPaddingDp * density * scaleFactor
     val textBlockWidth = (output.width - horizontalPaddingPx * 2).toInt().coerceAtLeast(1)
 
     val typeface = try {
@@ -110,9 +131,9 @@ fun renderQuoteOnPhoto(
 
     val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = style.textColor
-        textSize = style.textSizeSp * scaledDensity
+        textSize = style.textSizeSp * scaledDensity * scaleFactor
         this.typeface = typeface
-        setShadowLayer(6f * density, 0f, 2f * density, Color.argb(180, 0, 0, 0))
+        setShadowLayer(6f * density * scaleFactor, 0f, 2f * density * scaleFactor, Color.argb(180, 0, 0, 0))
     }
 
     val staticLayout = StaticLayout.Builder
@@ -124,19 +145,32 @@ fun renderQuoteOnPhoto(
 
     val textBlockHeight = staticLayout.height
 
-    val top = when (style.position) {
-        TextPosition.TOP -> verticalPaddingPx
-        TextPosition.CENTER -> (output.height - textBlockHeight) / 2f
-        TextPosition.BOTTOM -> output.height - textBlockHeight - verticalPaddingPx * 2
+    val rawLeft: Float
+    val rawTop: Float
+    if (anchorFractionX != null && anchorFractionY != null) {
+        rawLeft = anchorFractionX * output.width - textBlockWidth / 2f
+        rawTop = anchorFractionY * output.height - textBlockHeight / 2f
+    } else {
+        rawLeft = horizontalPaddingPx
+        rawTop = when (style.position) {
+            TextPosition.TOP -> verticalPaddingPx
+            TextPosition.CENTER -> (output.height - textBlockHeight) / 2f
+            TextPosition.BOTTOM -> output.height - textBlockHeight - verticalPaddingPx * 2
+        }
     }
 
+    val maxLeft = (output.width - textBlockWidth).toFloat().coerceAtLeast(0f)
+    val maxTop = (output.height - textBlockHeight).toFloat().coerceAtLeast(0f)
+    val left = rawLeft.coerceIn(0f, maxLeft)
+    val top = rawTop.coerceIn(0f, maxTop)
+
     canvas.save()
-    canvas.translate(horizontalPaddingPx, top + verticalPaddingPx / 2)
+    canvas.translate(left, top)
     staticLayout.draw(canvas)
     canvas.restore()
 
     if (profile != null) {
-        drawProfileBadge(context, canvas, output.width, output.height, profile, profileBadgeStyle, typeface)
+        drawProfileBadge(context, canvas, output.width, output.height, profile, profileBadgeStyle, typeface, scaleFactor)
     }
 
     return output
@@ -144,7 +178,8 @@ fun renderQuoteOnPhoto(
 
 /**
  * Draws a bottom-right "badge" made of the user's circular profile picture
- * plus their name, over a translucent pill so it stays readable on any photo.
+ * plus their name. Sizes are doubled from the original design and further
+ * scaled by [scaleFactor] for large source images.
  */
 private fun drawProfileBadge(
     context: Context,
@@ -153,29 +188,28 @@ private fun drawProfileBadge(
     canvasHeight: Int,
     profile: UserProfile,
     style: ProfileBadgeStyle,
-    nameTypeface: Typeface
+    nameTypeface: Typeface,
+    scaleFactor: Float
 ) {
     val density = context.resources.displayMetrics.density
     val scaledDensity = context.resources.displayMetrics.scaledDensity
 
-    val avatarSizePx = style.avatarSizeDp * density
-    val marginPx = style.marginDp * density
-    val borderWidthPx = style.avatarBorderWidthDp * density
+    val avatarSizePx = style.avatarSizeDp * density * scaleFactor
+    val marginPx = style.marginDp * density * scaleFactor
+    val borderWidthPx = style.avatarBorderWidthDp * density * scaleFactor
 
     val namePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = style.nameTextColor
-        textSize = style.nameTextSizeSp * scaledDensity
+        textSize = style.nameTextSizeSp * scaledDensity * scaleFactor
         typeface = nameTypeface
         textAlign = Paint.Align.RIGHT
-        setShadowLayer(5f * density, 0f, 1.5f * density, Color.argb(190, 0, 0, 0))
+        setShadowLayer(5f * density * scaleFactor, 0f, 1.5f * density * scaleFactor, Color.argb(190, 0, 0, 0))
     }
 
     val avatarCenterY = canvasHeight - marginPx - avatarSizePx / 2f
     val avatarCenterX = canvasWidth - marginPx - avatarSizePx / 2f
-    val nameGapPx = 10f * density
+    val nameGapPx = 10f * density * scaleFactor
 
-    // Name, vertically centered against the avatar. A shadow (set on namePaint
-    // above) keeps it readable without needing a solid background behind it.
     val nameBaselineY = avatarCenterY - (namePaint.ascent() + namePaint.descent()) / 2f
     canvas.drawText(
         profile.name,
@@ -184,8 +218,6 @@ private fun drawProfileBadge(
         namePaint
     )
 
-    // Circular profile picture, decoded from the uploaded file and center-cropped
-    // (not stretched) so non-square photos aren't distorted.
     val avatarLeft = avatarCenterX - avatarSizePx / 2f
     val avatarTop = avatarCenterY - avatarSizePx / 2f
     val avatarDrawn = drawCircularAvatar(
@@ -193,7 +225,6 @@ private fun drawProfileBadge(
     )
 
     if (avatarDrawn) {
-        // Thin border ring around the circular avatar.
         val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = style.avatarBorderColor
             this.style = Paint.Style.STROKE
@@ -224,8 +255,6 @@ private fun drawCircularAvatar(
     val rotated = applyExifRotation(imagePath, decoded)
     if (rotated.width <= 0 || rotated.height <= 0) return false
 
-    // Center-crop to the largest centered square so the drawable doesn't
-    // have to stretch a non-square photo unevenly.
     val squareSize = minOf(rotated.width, rotated.height)
     val srcLeft = (rotated.width - squareSize) / 2
     val srcTop = (rotated.height - squareSize) / 2
@@ -253,7 +282,6 @@ private fun decodeSampledBitmap(path: String, targetSizePx: Int): Bitmap? {
         android.graphics.BitmapFactory.decodeFile(path, boundsOptions)
 
         if (boundsOptions.outWidth <= 0 || boundsOptions.outHeight <= 0) {
-            // Bounds couldn't be read; fall back to a plain decode rather than returning null.
             return android.graphics.BitmapFactory.decodeFile(path)
         }
 
