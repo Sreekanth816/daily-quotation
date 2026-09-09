@@ -18,12 +18,17 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -129,6 +134,19 @@ fun PhotoQuoteScreen(profile: UserProfile, onEditProfile: () -> Unit) {
     // image dimensions — draggable in the preview, baked in on Generate.
     var textAnchor by remember { mutableStateOf(Offset(PositionPreset.TOP.fx, PositionPreset.TOP.fy)) }
 
+    var showImagePicker by remember { mutableStateOf(false) }
+
+    if (showImagePicker) {
+        ImagePickerBottomSheet(
+            onDismiss = { showImagePicker = false },
+            onImageSelected = { resId ->
+                backgroundResId = resId
+                renderedBitmap = null
+                showImagePicker = false
+            }
+        )
+    }
+
     // --- Speech-to-text ---
     val speechLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -227,13 +245,22 @@ fun PhotoQuoteScreen(profile: UserProfile, onEditProfile: () -> Unit) {
         )
 
         Spacer(modifier = Modifier.height(8.dp))
-        OutlinedButton(onClick = {
-            backgroundResId = ImagePool.randomResId(exclude = backgroundResId)
-            renderedBitmap = null
-        }) {
-            Icon(Icons.Filled.Shuffle, contentDescription = null)
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("Shuffle image")
+
+        Row {
+            OutlinedButton(onClick = {
+                backgroundResId = ImagePool.randomResId(exclude = backgroundResId)
+                renderedBitmap = null
+            }) {
+                Icon(Icons.Filled.Shuffle, contentDescription = null)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Shuffle image")
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            OutlinedButton(onClick = { showImagePicker = true }) {
+                Icon(Icons.Filled.PhotoLibrary, contentDescription = null)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Browse")
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -451,6 +478,50 @@ private fun saveBitmapToGallery(context: android.content.Context, bitmap: Bitmap
         bitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)
     }
     return uri
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ImagePickerBottomSheet(
+    onDismiss: () -> Unit,
+    onImageSelected: (Int) -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(),
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 32.dp)
+        ) {
+            Text(
+                text = "Select Background Image",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(16.dp)
+            )
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(100.dp),
+                contentPadding = PaddingValues(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.heightIn(max = 400.dp)
+            ) {
+                items(ImagePool.drawableResIds) { resId ->
+                    Image(
+                        painter = painterResource(id = resId),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onImageSelected(resId) }
+                    )
+                }
+            }
+        }
+    }
 }
 
 private fun saveBitmapToCache(context: android.content.Context, bitmap: Bitmap): Uri {
